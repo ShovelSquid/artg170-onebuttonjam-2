@@ -82,6 +82,9 @@ options = {
 	isPlayingBgm: true,
 	isReplayEnabled: true,
 	theme: "simple",
+	isCapturing: true,
+	isCapturingGameCanvasOnly: true,
+	captureCanvasScale: 2,
 };
 
 // DEFINITIONS
