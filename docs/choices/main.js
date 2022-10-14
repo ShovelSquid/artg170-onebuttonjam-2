@@ -40,7 +40,7 @@ const G = {
 		CHARGE_RATE: 1,
 		CHARGE_MAX: 24,
 		// dash
-		DASH_LENGTH_MAX: 40,
+		DASH_LENGTH_MIN: 40,
 		DASH_COOLDOWN: 3,
 		DASH_LINETIME: 4,
 		// blocking
@@ -121,6 +121,7 @@ let cursor;
  * isFiring: boolean,
  * charge: number,
  * dashCooldown: number,
+ * dashLength: number,
  * drawLineTime: number,
  * lineAngle: number,
  * blocking: boolean,
@@ -204,6 +205,7 @@ function update() {
 			isFiring: true,
 			charge: 0,
 			dashCooldown: 0,
+			dashLength: G.player.DASH_LENGTH_MIN,
 			drawLineTime: 0,
 			lineAngle: 0,
 			blocking: false,
@@ -228,30 +230,13 @@ function update() {
 	wave_respawn_time--;
 	if (wave_respawn_time <= 0) {
 		if (enemies.length === 0) {
-			enemies = times(6, () => {
-				const posX = rnd(0, G.WIDTH);
-				const posY = rnd(0, G.HEIGHT);
-				return {
-					pos: vec(posX, posY),
-					size: rnd(0.5, 2),
-					color: "red",
-				}
-			});
+			spawn_enemies(6);
 			wave_respawn_time = G.WAVE_RESPAWN_RATE;
 		}
 		else if (enemies.length < 6) {
-			for (let i = 0; i < 3; i++) {
-				const posX = rnd(0, G.WIDTH);
-				const posY = rnd(0, G.HEIGHT);
-				enemies.push({
-					pos: vec(posX, posY),
-					size: rnd(0.5, 2),
-					color: "red",
-				});
-			}
+			spawn_enemies(3);
 			wave_respawn_time = G.WAVE_RESPAWN_RATE;
 		}
-	
 	}
 
 	// create dust
@@ -282,16 +267,14 @@ function update() {
 		? cursor.target = null
 		: cursor.target = enemies[Math.floor(Math.random()*enemies.length)];	
 	}
-
 	if (cursor.isTargeting) {
 		// move cursor to circle rotation and draw
 		cursorTime = ticks / G.CURSOR_RCYCLE_TICKS;
-		// text(cursorTime.toString(), 3, 9);
 		let xpos = G.CURSOR_PLAYER_DISTANCE * cos(cursorTime) + player.pos.x;
 		let ypos = G.CURSOR_PLAYER_DISTANCE * sin(cursorTime) + player.pos.y;
 		cursor.pos = vec(xpos, ypos);
 	}
-	else {
+	else if (cursor.target != null) {
 		cursor.pos = cursor.target.pos;
 	}
 	cursor.pos.clamp(0, G.WIDTH, 0, G.HEIGHT);
@@ -301,6 +284,12 @@ function update() {
 
 	// fire gun when holding down for enough time
 	player.dashCooldown--;
+	player.dashLength > G.player.DASH_LENGTH_MIN
+	? player.dashLength -= 0.3
+	: player.dashLength = G.player.DASH_LENGTH_MIN;
+
+	// text(player.dashLength.toString(), 3, 9);
+
 	if (input.isPressed) {
 		if (player.charge > G.player.CHARGE_MAX) {
 			cursor.isTargeting = true;
@@ -312,13 +301,16 @@ function update() {
 			player.blockingSetUp = false;
 		}
 	}
+
+
 	// dash when releasing
 	else if (input.isJustReleased) {
 		if (player.charge <= G.player.CHARGE_MAX && player.dashCooldown <= 0) {
 			// player_launch(player.pos.angleTo(cursor.pos));
 			player.lineAngle = player.pos.angleTo(cursor.pos);
 			play("jump");
-			addScore(1, player.pos);
+			addScore(5, player.pos);
+			player.dashLength += 5;
 			// set draw time to not 0:
 			player.drawLineTime = G.player.DASH_LINETIME;
 			// particles!
@@ -334,8 +326,8 @@ function update() {
 			// give player a new target
 			// cursor.target = null;
 			// move player to dash location
-			player.pos.x += G.player.DASH_LENGTH_MAX * Math.cos(player.lineAngle);
-			player.pos.y += G.player.DASH_LENGTH_MAX * Math.sin(player.lineAngle);
+			player.pos.x += player.dashLength * Math.cos(player.lineAngle);
+			player.pos.y += player.dashLength * Math.sin(player.lineAngle);
 		
 			player.dashCooldown = G.player.DASH_COOLDOWN;
 		}
@@ -402,9 +394,9 @@ function update() {
 	if (player.drawLineTime > 0) {
 		// summon a quick line from player to dash location
 		color("green");
-		line(player.pos.x, player.pos.y, 
-			player.pos.x - G.player.DASH_LENGTH_MAX*Math.cos(player.lineAngle), 
-			player.pos.y - G.player.DASH_LENGTH_MAX*Math.sin(player.lineAngle),
+		line(player.pos.x, player.pos.y,
+			player.pos.x - player.dashLength*Math.cos(player.lineAngle), 
+			player.pos.y - player.dashLength*Math.sin(player.lineAngle),
 			2);
 		player.drawLineTime--;
 	}
@@ -460,19 +452,10 @@ function update() {
 		if (isCollidingWithGreen) {
 			// decrease size / health
 			e.size -= 2;
-			// determine distance to player
-			let d = Math.round(Math.sqrt(
-				(player.pos.x - e.pos.x)**2 
-				+ (player.pos.y - e.pos.y)**2));
-			let modifieD = Math.round((1/d) * 50); 
-			// add score if hit / destroyed
-
 			if (e.size <= 0) {
-				addScore((10 * modifieD) * difficulty, e.pos);
+				addScore((25) * difficulty, e.pos);
+				player.dashLength += 10;
 				cursor.target = null;
-			}
-			else {
-				addScore(1 * modifieD, e.pos);
 			}
 			play("explosion");
 		}
@@ -483,8 +466,8 @@ function update() {
 		}
 
 		if (isCollidingWithShield) {
-			e.pos.x -= (G.ENEMY_SPEED * 3) * Math.cos(e.pos.angleTo(player.pos)) * difficulty;
-			e.pos.y -= (G.ENEMY_SPEED * 3) * Math.sin(e.pos.angleTo(player.pos)) * difficulty;	
+			e.pos.x -= (G.ENEMY_SPEED * 6) * Math.cos(e.pos.angleTo(player.pos)) * difficulty;
+			e.pos.y -= (G.ENEMY_SPEED * 6) * Math.sin(e.pos.angleTo(player.pos)) * difficulty;	
 		}
 
 		return (e.size <= 0);
@@ -505,24 +488,53 @@ function update() {
 }
 // func to make player dash
 function player_launch(angle) {
+	player.lineAngle = player.pos.angleTo(cursor.pos);
 	play("jump");
-	addScore(1, player.pos);
-	color("green");
-	// summon a quick line from player to dash location
-	line(player.pos.x, player.pos.y, 
-		player.pos.x + player.charge*Math.cos(angle), 
-		player.pos.y + player.charge*Math.sin(angle),
-		2);
+	addScore(5, player.pos);
+	player.dashLength += 5;
+	// set draw time to not 0:
+	player.drawLineTime = G.player.DASH_LINETIME;
 	// particles!
+	color("green");
 	particle (
 		player.pos.x,
 		player.pos.y,
 		rnd(15, 21),
 		rnd(2.5, 3.5),
-		angle,
+		player.lineAngle,
 		PI/6,
-	)
+	);
+	// give player a new target
 	// move player to dash location
-	player.pos.x += G.player.DASH_LENGTH_MAX * Math.cos(angle);
-	player.pos.y += G.player.DASH_LENGTH_MAX * Math.sin(angle);
+	player.pos.x += player.dashLength * Math.cos(player.lineAngle);
+	player.pos.y += player.dashLength * Math.sin(player.lineAngle);
+
+	player.dashCooldown = G.player.DASH_COOLDOWN;
+}
+
+function spawn_enemies(amt) {
+	console.log("SPAWN ENEMY");
+	for (let i = 0; i < amt; i++) {
+		// get random X position
+		let posX = rnd(0, G.WIDTH);
+		// if close within player shield, new posX
+		// while (posX - player.pos.x < G.player.SHIELD_SIZE) {
+		// 	console.log("SPAWNX");
+		// 	posX = rnd(0, G.WIDTH);
+		// }; 
+		// same for y
+		let posY = rnd(0, G.HEIGHT);
+		// repeat check to see if in bounds
+		// while (posY - player.pos.y < G.player.SHIELD_SIZE) {
+		// 	console.log("SPAWNY");
+		// 	posY = rnd(0, G.HEIGHT);
+		// };
+		// add dee enemies
+		enemies.push({
+			pos: vec(posX, posY),
+			size: rnd(0.5, 2),
+			color: "red",
+		});
+	}
+
 }
